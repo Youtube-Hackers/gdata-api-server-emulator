@@ -92,7 +92,13 @@ def handle_gdata_request(path):
     elif path.startswith("standardfeeds/most_popular"):
         return handle_most_popular(max_results, start_index, fields, version)
     else:
-        return Response("Route not supported", status=404, mimetype="text/html")
+        return render_template_string(
+            ERROR_TEMPLATE,
+            code=404,
+            title="Not Found",
+            url=request.path
+        ), 404
+
 
 def handle_most_subscribed(max_results, start_index, fields, version):
     videos = innertube_search("channel", max_results=max_results)
