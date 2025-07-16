@@ -113,7 +113,7 @@ def add_video_entry(root, item):
     if thumb:
         ET.SubElement(media, f"{{{NS_MEDIA}}}thumbnail", {"url": thumb})
 
-    ET.SubElement(entry, f"{{{NS_YT}}}videoId").text = vid
+    ET.SubElement(entry, f"{{{NS_YT}}}videoid").text = vid
     ET.SubElement(media, f"{{{NS_YT}}}duration", {
         "seconds": duration
     })
@@ -122,6 +122,31 @@ def add_video_entry(root, item):
         "favoriteCount": str(item.get("favoriteCount", 0))
     })
 
+
+def add_channel_entry(root, item):
+    metadata = item.get("metadata", {})
+
+    title = metadata.get("title", "Unknown Channel")
+    description = metadata.get("description", "")
+    subscriber_count = metadata.get("subscriberCountText", "0")
+    thumbnails = metadata.get("thumbnails", [])
+    entry = ET.SubElement(root, f"{{{NS_ATOM}}}entry")
+    ET.SubElement(entry, f"{{{NS_ATOM}}}title").text = title
+    ET.SubElement(entry, f"{{{NS_YT}}}channelId").text = item.get("channelId", "")  # optional, falls vorhanden
+    author = ET.SubElement(entry, f"{{{NS_ATOM}}}author")
+    ET.SubElement(author, f"{{{NS_ATOM}}}name").text = title
+    ET.SubElement(author, f"{{{NS_ATOM}}}uri").text = "https://www.youtube.com/"  # Optional oder dynamisch mit channelId
+    ET.SubElement(entry, f"{{{NS_YT}}}statistics", {
+        "subscriberCount": subscriber_count
+    })
+
+    media = ET.SubElement(entry, f"{{{NS_MEDIA}}}group")
+    if thumbnails:
+        thumb_url = thumbnails[0].get("url", "")
+        if thumb_url:
+            ET.SubElement(media, f"{{{NS_MEDIA}}}thumbnail", {"url": thumb_url})
+
+    ET.SubElement(entry, f"{{{NS_ATOM}}}summary").text = description
 
 @app.route("/feeds/api/<path:path>")
 def handle_gdata_request(path):
@@ -145,38 +170,22 @@ def handle_gdata_request(path):
     elif path.startswith("videos"):
         return handle_videos(params, max_results, start_index)
     elif path.startswith("users/"):
-        return handle_user_uploads(path, max_results, start_index)
+        segments = path.split("/")
+        if len(segments) == 3 and segments[2] == "uploads":
+            return handle_user_uploads(segments[1], max_results, start_index)
+        elif len(segments) == 2:
+            return handle_user_channel_info(segments[1])
     elif path.startswith("playlists/"):
         return handle_playlists(path, max_results, start_index)
     else:
         return render_template_string(ERROR_TEMPLATE, code=404, title="Not Found", url=request.path), 404
 
 def handle_most_subscribed(max_results, start_index, fields, version):
-    videos = innertube_search("channel", max_results=max_results)
-    root = ET.Element("feed", xmlns=NS_ATOM)
-    root.set("xmlns:openSearch", NS_OPENSEARCH)
-    root.set("xmlns:yt", NS_YT)
-    root.set("xmlns:media", NS_MEDIA)
-    total_results = ET.SubElement(root, f"{{{NS_OPENSEARCH}}}totalResults")
-    total_results.text = str(len(videos))
-    start_index_elem = ET.SubElement(root, f"{{{NS_OPENSEARCH}}}startIndex")
-    start_index_elem.text = str(start_index)
-    items_per_page = ET.SubElement(root, f"{{{NS_OPENSEARCH}}}itemsPerPage")
-    items_per_page.text = str(max_results)
+    channels = innertube_search("channel", max_results=max_results)
+    root = build_feed(channels, len(channels), start_index, max_results)
 
-    for item in videos[start_index-1:start_index-1+max_results]:
-        entry = ET.SubElement(root, "entry")
-        title = ET.SubElement(entry, "title")
-        title.text = item.get("author", "Unknown Channel")
-        channel_id = ET.SubElement(entry, f"{{{NS_YT}}}channelId")
-        channel_id.text = item.get("authorId", "")
-        statistics = ET.SubElement(entry, f"{{{NS_YT}}}channelStatistics")
-        subscriber_count = ET.SubElement(statistics, "subscriberCount")
-        subscriber_count.text = item.get("subscriberCountText", "0")
-        media_group = ET.SubElement(entry, f"{{{NS_MEDIA}}}group")
-        thumbnail = ET.SubElement(media_group, f"{{{NS_MEDIA}}}thumbnail")
-        thumbnail_url = item.get("authorThumbnails", [{}])[0].get("url", "")
-        thumbnail.set("url", thumbnail_url)
+    for item in channels[start_index-1:start_index-1+max_results]:
+        add_channel_entry(root, item)
 
     return Response(
         create_xml_response(root),
@@ -238,7 +247,7 @@ def handle_video_detail(video_id):
         "seconds": str(details.get("lengthSeconds", 0))
     })
 
-    ET.SubElement(root, f"{{{NS_YT}}}videoId").text = video_id
+    ET.SubElement(root, f"{{{NS_YT}}}videoid").text = video_id
     ET.SubElement(root, f"{{{NS_YT}}}statistics", {
         "viewCount": str(details.get("viewCount", 0)),
         "favoriteCount": "0"
@@ -246,14 +255,23 @@ def handle_video_detail(video_id):
 
     return Response(create_xml_response(root), mimetype="application/atom+xml; charset=UTF-8")
 
-def handle_user_uploads(path, max_results, start_index):
-    user = path.split("/")[1]
-    data = innertube_browse(user, max_videos=max_results)
+def handle_user_uploads(channel_id, max_results, start_index):
+    data = innertube_browse(channel_id, max_videos=max_results)
     videos = data["videos"]
     root = build_feed(videos, len(videos), start_index, max_results)
     for item in videos[start_index-1:start_index-1+max_results]:
         add_video_entry(root, item)
     return Response(create_xml_response(root), mimetype="application/atom+xml; charset=UTF-8")
+
+def handle_user_channel_info(channel_id):
+    try:
+        data = innertube_browse(channel_id, max_videos=0)
+        root = build_feed([], 1, 1, 1)
+        add_channel_entry(root, data)
+        return Response(create_xml_response(root), mimetype="application/atom+xml; charset=UTF-8")
+    except Exception as e:
+        print(f"handle_user_channel_info error: {e}")
+        return render_template_string(ERROR_TEMPLATE, code=500, title="Channel Info Error", url=request.path), 500
 
 def handle_playlists(path, max_results, start_index):
     segments = path.split("/")
@@ -313,18 +331,7 @@ def handle_most_popular(max_results, start_index, fields, version):
     items_per_page.text = str(max_results)
 
     for item in videos[start_index-1:start_index-1+max_results]:
-        entry = ET.SubElement(root, "entry")
-        title = ET.SubElement(entry, "title")
-        title.text = item.get("title", "")
-        video_id = ET.SubElement(entry, f"{{{NS_YT}}}videoId")
-        video_id.text = item.get("videoId", "")
-        media_group = ET.SubElement(entry, f"{{{NS_MEDIA}}}group")
-        thumbnail = ET.SubElement(media_group, f"{{{NS_MEDIA}}}thumbnail")
-        thumbnail_url = item.get("videoThumbnails", [{}])[0].get("url", "")
-        thumbnail.set("url", thumbnail_url)
-        statistics = ET.SubElement(entry, f"{{{NS_YT}}}statistics")
-        view_count = ET.SubElement(statistics, "viewCount")
-        view_count.text = item.get("viewCountText", "0")
+        add_video_entry(root, item)
 
     return Response(
         create_xml_response(root),
@@ -333,20 +340,11 @@ def handle_most_popular(max_results, start_index, fields, version):
 
 def handle_channels(max_results, start_index):
     channels = innertube_search("channel", max_results=max_results)
-    root = ET.Element(f"{{{NS_ATOM}}}feed")
-    ET.SubElement(root, f"{{{NS_OPENSEARCH}}}totalResults").text = str(len(channels))
-    ET.SubElement(root, f"{{{NS_OPENSEARCH}}}startIndex").text = str(start_index)
-    ET.SubElement(root, f"{{{NS_OPENSEARCH}}}itemsPerPage").text = str(max_results)
+    root = build_feed(channels, len(channels), start_index, max_results)
 
     for ch in channels[start_index-1:start_index-1+max_results]:
-        entry = ET.SubElement(root, f"{{{NS_ATOM}}}entry")
-        ET.SubElement(entry, f"{{{NS_ATOM}}}title").text = ch.get("author", "")
-        ET.SubElement(entry, f"{{{NS_YT}}}channelId").text = ch.get("authorId", "")
-        ET.SubElement(entry, f"{{{NS_YT}}}statistics", {"subscriberCount": ch.get("subscriberCountText", "0")})
+        add_channel_entry(root, ch)
 
-        media = ET.SubElement(entry, f"{{{NS_MEDIA}}}group")
-        thumb = ch.get("authorThumbnails", [{}])[0].get("url", "")
-        ET.SubElement(media, f"{{{NS_MEDIA}}}thumbnail", {"url": thumb})
     return Response(create_xml_response(root), mimetype="application/atom+xml; charset=UTF-8")
 
 if __name__ == "__main__":
