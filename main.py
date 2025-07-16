@@ -46,7 +46,7 @@ ERROR_TEMPLATE = """
   </style>
   <a href="//www.google.com/"><span id="logo" aria-label="Google"></span></a>
   <p><b>{{ code }}.</b> <ins>That’s an error.</ins>
-  <p>The requested URL <code>{{ url }}</code> was not found on this server.  <ins>That’s all we know.</ins>
+  <p>The requested URL <code>{{ url }}</code> was not found on this server (ERROR: {{title}}).  <ins>That’s all we know.</ins>
 </html>
 """
 
@@ -87,31 +87,40 @@ def build_feed(videos, total, start_index, max_results):
 
 def add_video_entry(root, item):
     vid = item.get("videoId")
+    published = item.get("publishedText", "")
+    duration = str(item.get("lengthSeconds", 0))
     entry = ET.SubElement(root, f"{{{NS_ATOM}}}entry")
     ET.SubElement(entry, f"{{{NS_ATOM}}}id").text = f"http://gdata.youtube.com/feeds/api/videos/{vid}"
-    ET.SubElement(entry, f"{{{NS_ATOM}}}published").text = item.get("published", "")
-    ET.SubElement(entry, f"{{{NS_ATOM}}}updated").text = item.get("published", "")
+    ET.SubElement(entry, f"{{{NS_ATOM}}}published").text = published
+    ET.SubElement(entry, f"{{{NS_ATOM}}}updated").text = published
     ET.SubElement(entry, f"{{{NS_ATOM}}}title").text = item.get("title", "")
     ET.SubElement(entry, f"{{{NS_ATOM}}}content").text = item.get("description", "")
     author = ET.SubElement(entry, f"{{{NS_ATOM}}}author")
     ET.SubElement(author, f"{{{NS_ATOM}}}name").text = item.get("author", "")
     ET.SubElement(author, f"{{{NS_ATOM}}}uri").text = f"http://gdata.youtube.com/feeds/api/users/{item.get('authorId', '')}"
+
     ET.SubElement(entry, f"{{{NS_ATOM}}}link", {
         "rel": "alternate",
         "type": "text/html",
         "href": f"https://www.youtube.com/watch?v={vid}"
     })
+
     media = ET.SubElement(entry, f"{{{NS_MEDIA}}}group")
     ET.SubElement(media, f"{{{NS_MEDIA}}}title").text = item.get("title", "")
     ET.SubElement(media, f"{{{NS_MEDIA}}}description").text = item.get("description", "")
     ET.SubElement(media, f"{{{NS_MEDIA}}}player", {"url": f"https://www.youtube.com/watch?v={vid}"})
     thumb = item.get("videoThumbnails", [{}])[0].get("url", "")
-    ET.SubElement(media, f"{{{NS_MEDIA}}}thumbnail", {"url": thumb})
+    if thumb:
+        ET.SubElement(media, f"{{{NS_MEDIA}}}thumbnail", {"url": thumb})
+
+    ET.SubElement(entry, f"{{{NS_YT}}}videoId").text = vid
+    ET.SubElement(media, f"{{{NS_YT}}}duration", {
+        "seconds": duration
+    })
     ET.SubElement(entry, f"{{{NS_YT}}}statistics", {
         "viewCount": str(item.get("viewCount", 0)),
         "favoriteCount": str(item.get("favoriteCount", 0))
     })
-
 
 
 @app.route("/feeds/api/<path:path>")
@@ -247,11 +256,34 @@ def handle_user_uploads(path, max_results, start_index):
     return Response(create_xml_response(root), mimetype="application/atom+xml; charset=UTF-8")
 
 def handle_playlists(path, max_results, start_index):
-    pid = path.split("/")[1]
-    videos = innertube_search(f"playlist:{pid}", max_results=max_results)
-    root = build_feed(videos, len(videos), start_index, max_results)
-    for item in videos[start_index-1:start_index-1+max_results]:
-        add_video_entry(root, item)
+    segments = path.split("/")
+
+    if len(segments) == 2:
+        return handle_playlist_metadata(segments[1])
+    elif len(segments) == 3 and segments[2] == "videos":
+        return handle_playlist_videos(segments[1], max_results, start_index)
+    else:
+        return render_template_string(ERROR_TEMPLATE, code=404, title="Not Found", url=request.path), 404
+
+
+
+def handle_playlist_videos(playlist_id, max_results, start_index):
+    return render_template_string(ERROR_TEMPLATE, code=500, title="NOT IMPLEMENTED", url=request.path), 404
+
+def handle_playlist_metadata(playlist_id):
+    try:
+        data = innertube_browse(f"VL{playlist_id}")
+        metadata = data.get("metadata", {})
+        title = metadata.get("title", "Untitled Playlist")
+    except Exception as e:
+        print(f"handle_playlist_metadata error: {e}")
+        return render_template_string(ERROR_TEMPLATE, code=500, title="Playlist Fetch Error", url=request.path), 500
+
+    root = ET.Element(f"{{{NS_ATOM}}}entry")
+    ET.SubElement(root, f"{{{NS_ATOM}}}id").text = f"http://gdata.youtube.com/feeds/api/playlists/{playlist_id}"
+    ET.SubElement(root, f"{{{NS_ATOM}}}title").text = title
+    ET.SubElement(root, f"{{{NS_ATOM}}}content").text = metadata.get("description", "")
+
     return Response(create_xml_response(root), mimetype="application/atom+xml; charset=UTF-8")
 
 def handle_video_comments(path, max_results, start_index):
