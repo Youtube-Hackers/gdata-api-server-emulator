@@ -127,6 +127,8 @@ def handle_gdata_request(path):
         return handle_video_detail(video_id)
     elif path.startswith("videos/") and path.endswith("/responses"):
         return handle_video_comments(path, max_results, start_index)
+    elif path.startswith("videos/") and path.endswith("/comments"):
+        return handle_video_comments(path, max_results, start_index)
     elif path.startswith("standardfeeds/most_popular"):
         return handle_videos(params, max_results, start_index)
     elif path.startswith("channelstandardfeeds/most_subscribed"):
@@ -137,8 +139,6 @@ def handle_gdata_request(path):
         return handle_user_uploads(path, max_results, start_index)
     elif path.startswith("playlists/"):
         return handle_playlists(path, max_results, start_index)
-    elif path.startswith("comments/"):
-        return handle_video_comments(path, max_results, start_index)
     else:
         return render_template_string(ERROR_TEMPLATE, code=404, title="Not Found", url=request.path), 404
 
