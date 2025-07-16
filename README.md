@@ -2,7 +2,7 @@
 Emulates the Youtube GData v2 Api
 
 
-Check Progress.md for Implementation progress
+Check [Progress.md](https://github.com/Youtube-Hackers/gdata-api-server-emulator/blob/main/Progress.md) for implementation status
 
 
 
