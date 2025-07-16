@@ -15,8 +15,8 @@
 | Endpoint                                 | Status | Description                          |
 |------------------------------------------|--------|--------------------------------------|
 | `/videos`                                | 🔶     | Search and browse videos             |
-| `/videos/{video-id}`                     | ❌     | Metadata for a single video          |
-| `/videos/{video-id}/comments`            | ❌     | Comments on a video                  |
+| `/videos/{video-id}`                     | 🔶     | Metadata for a single video          |
+| `/videos/{video-id}/comments`            | 🔶     | Comments on a video                  |
 | `/videos/{video-id}/related`             | ❌     | Related videos                       |
 | `/videos/{video-id}/ratings`             | ❌     | Rating information                   |
 | `/videos/{video-id}/responses`           | ❌     | Video responses                      |
@@ -84,7 +84,7 @@
 
 | Endpoint                                 | Status | Description                          |
 |------------------------------------------|--------|--------------------------------------|
-| `/videos/{video-id}/comments`            | ❌     | Comments for a video                 |
+| `/videos/{video-id}/comments`            | 🔶     | Comments for a video                 |
 | `/users/{username}/comments`             | ❌     | User’s comment history               |
 
 **Notes**:
