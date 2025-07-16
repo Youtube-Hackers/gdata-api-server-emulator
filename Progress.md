@@ -143,14 +143,3 @@
 | Rate limit simulation        | ❌     | Simulate quota/rate limits           |
 | Atom + JSON toggling         | ❌     | Switch between Atom and JSON formats |
 
-## Implemented Summary
-
-- Fully Implemented: 2
-- Partially Implemented: 5
-- Not Yet Implemented: 45+
-- Not Planned: 0
-
-**Notes**:
-- Fully implemented endpoints: `/videos/{video-id}/responses`.
-- Partially implemented endpoints: `/videos`, `/users/{username}/uploads`, `/playlists/{playlist-id}`, `/playlists/{playlist-id}/videos`, `/videos?vq=QUERY`, `/standardfeeds/most_popular`, `/channelstandardfeeds/most_subscribed` (due to missing query parameters like `category`, `orderby`, etc.).
-- Query parameters `vq`, `start-index`, and `max-results` are fully supported.
