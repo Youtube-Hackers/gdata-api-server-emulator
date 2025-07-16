@@ -11,7 +11,7 @@ import time
 import argparse
 from typing import List, Dict, Optional, Tuple
 import unicodedata
-#from .comments import YoutubeCommentDownloader, SORT_BY_POPULAR, SORT_BY_RECENT
+from comments import YoutubeCommentDownloader, SORT_BY_POPULAR, SORT_BY_RECENT
 
 YOUTUBE_INNERTUBE_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 YOUTUBE_API_URL = f"https://www.youtube.com/youtubei/v1/search?key={YOUTUBE_INNERTUBE_API_KEY}"
@@ -437,7 +437,7 @@ def produce_continuation(video_id, cursor="", sort_by="top"):
     encoded = base64.urlsafe_b64encode(json.dumps(object).encode()).decode()
     return urllib.parse.quote(encoded)
 
-def innertube_search(query, region="US", max_results=50):
+def innertube_search(query, region="US", max_results=100):
     payload = {
         "context": CLIENT_CONTEXT,
         "query": query,
@@ -591,6 +591,18 @@ def innertube_trending(trending_type=None, region="US", max_results=50):
     except Exception:
         return []
 
+def parse_sub_count(text):
+    match = re.match(r"([\d\.]+)([MK]?)", text)
+    if not match:
+        return 0
+    num, suffix = match.groups()
+    num = float(num)
+    if suffix == "M":
+        return int(num * 1_000_000)
+    elif suffix == "K":
+        return int(num * 1_000)
+    return int(num)
+
 def innertube_browse(browse_id, max_videos=30):
     payload = {
         "context": CLIENT_CONTEXT,
@@ -608,6 +620,7 @@ def innertube_browse(browse_id, max_videos=30):
         "title": "Unknown Channel",
         "description": "",
         "subscriberCountText": "No subscribers",
+        "sub_count": 0,
         "thumbnails": []
     }
 
@@ -626,9 +639,16 @@ def innertube_browse(browse_id, max_videos=30):
 
     header = data.get('header', {}).get('c4TabbedHeaderRenderer', {})
     if header:
+        subscriber_text = (
+            header.get('subscriberCountText', {}).get('simpleText') or
+            (header.get('subscriberCountText', {}).get('runs', [{}])[0].get('text'))
+        )
+        if subscriber_text:
+            channel_metadata['subscriberCountText'] = subscriber_text
+            channel_metadata['sub_count'] = parse_sub_count(subscriber_text)
+
         channel_metadata.update({
             "title": header.get('title', channel_metadata['title']),
-            "subscriberCountText": header.get('subscriberCountText', {}).get('simpleText', channel_metadata['subscriberCountText'])
         })
         if 'avatar' in header:
             thumbnails = header['avatar'].get('thumbnails', [])
@@ -642,11 +662,22 @@ def innertube_browse(browse_id, max_videos=30):
         channel_metadata.update({
             "title": legacy_header.get('pageTitle', channel_metadata['title'])
         })
-        metadata_rows = legacy_header.get('content', {}).get('pageHeaderViewModel', {}).get('metadata', {}).get('contentMetadataViewModel', {}).get('metadataRows', [])
+        metadata_rows = legacy_header.get('content', {}) \
+            .get('pageHeaderViewModel', {}) \
+            .get('metadata', {}) \
+            .get('contentMetadataViewModel', {}) \
+            .get('metadataRows', [])
+
         for row in metadata_rows:
             parts = row.get('metadataParts', [])
-            if len(parts) >= 2:
-                channel_metadata['subscriberCountText'] = parts[1].get('text', {}).get('content', channel_metadata['subscriberCountText'])
+            for part in parts:
+                text = part.get('text', {}).get('content', '')
+                if 'subscribers' in text.lower():
+                    channel_metadata['subscriberCountText'] = text
+                    channel_metadata['sub_count'] = parse_sub_count(text)
+                    break
+            if channel_metadata['sub_count'] > 0:
+                break
 
     videos = ChannelVideos(Client(), browse_id).next(max_videos)
     videos_data = []
