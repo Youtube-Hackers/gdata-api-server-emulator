@@ -29,7 +29,7 @@
 
 | Endpoint                                      | Status | Description                          |
 |-----------------------------------------------|--------|--------------------------------------|
-| `/users/{username}`                           | ❌     | User profile                         |
+| `/users/{username}`                           | 🔶     | User profile                         |
 | `/users/{username}/uploads`                   | 🔶     | User's uploaded videos               |
 | `/users/{username}/favorites`                 | ❌     | User's favorite videos               |
 | `/users/{username}/playlists`                 | ❌     | User’s playlists                     |
